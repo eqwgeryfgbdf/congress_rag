@@ -66,6 +66,18 @@ Export JSONL for downstream embedding:
 congress-rag export jsonl --out data/jsonl
 ```
 
+Build embedding-ready RAG chunks from the local SQLite database:
+
+```bash
+congress-rag rag build --out data/rag/speeches.jsonl
+```
+
+Smoke-test the RAG conversion with a small sample:
+
+```bash
+congress-rag rag build --limit 25 --out data/rag/sample-speeches.jsonl
+```
+
 ## Traffic Protection
 
 The HTTP client has a shared cooldown lock, so every request start is spaced out even when transcript fetching is concurrent.
@@ -147,6 +159,84 @@ Metadata to keep with each vector:
 - `meeting_title`
 - `legislator_slug`
 - topic slugs from `speech_topics`
+
+The built-in RAG converter writes one JSON object per chunk:
+
+```json
+{
+  "id": "speech:152872:chunk:0",
+  "text": "日期: ...\n會議: ...\n摘要:\n...\n逐字稿:\n...",
+  "metadata": {
+    "source": "lawmaker.twreporter.org",
+    "documentType": "speechTranscript",
+    "slug": "152872",
+    "url": "https://lawmaker.twreporter.org/congress/a/152872",
+    "date": "2024-05-23",
+    "topicSlugs": ["topic3-17-6"],
+    "topicTitles": ["資安防護"],
+    "chunkIndex": 0,
+    "chunkCount": 3
+  }
+}
+```
+
+Tune chunking for your embedding model:
+
+```bash
+congress-rag rag build --chunk-chars 1800 --overlap-chars 200
+```
+
+## OpenAI CLI Chat
+
+Set your OpenAI API key:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`:
+
+```dotenv
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-5.5
+CONGRESS_RAG_FILE=data/rag/speeches.jsonl
+CONGRESS_RAG_TOP_K=5
+```
+
+You can still override these values with shell env vars or CLI flags. To use a different env file:
+
+```bash
+congress-rag chat ask "請摘要資安相關討論" --env-file .env.local
+```
+
+Ask a single question with local RAG context from `data/rag/speeches.jsonl` if it exists:
+
+```bash
+congress-rag chat ask "請根據逐字稿摘要最近有哪些資安相關討論？"
+```
+
+Read a question from stdin:
+
+```bash
+echo "有哪些委員談到災後重建預算？" | congress-rag chat ask --stdin
+```
+
+Start an interactive terminal chat:
+
+```bash
+congress-rag chat ask --interactive
+```
+
+Use a specific RAG file or disable local context:
+
+```bash
+congress-rag chat ask "請摘要這些資料" --rag-file data/rag/sample-speeches.jsonl --top-k 3
+congress-rag chat ask "只用模型知識回答：什麼是 RAG？" --no-rag
+```
+
+If the model response fails, the CLI reports the failure reason from OpenAI, including
+HTTP errors, non-JSON responses, empty output, `failed`, `cancelled`, `incomplete`,
+or model refusal payloads.
 
 ## Daily Cron Example
 
